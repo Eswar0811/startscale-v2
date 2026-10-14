@@ -14,7 +14,11 @@ for c in need:
     chk(f"missing {c}", d[c].isna())
 chk("status != ok", d.status != "ok")
 cold = d.cache == "cold"
-chk("cold cell but pull events missing", cold & (d.t_pull_start.isna() | d.t_pull_end.isna()))
+chk("cold cell but no Pulled event", cold & d.t_pull_end.isna())
+# the kubelet dedupes concurrent pulls: only the pod that triggers the pull has a Pulling event, so require
+# at least one per (run, node) rather than one per pod
+g = d[cold].groupby(["run_id", "node"]).t_pull_start.apply(lambda x: x.notna().any())
+chk("cold (run,node) with no Pulling event at all", (~g).sum())
 chk("warm cell but node had no image", (~cold) & (d.node_had_image == 0))
 order = ["t_decision", "t_scheduled", "t_started", "t_ready_observed"]
 for x, y in zip(order, order[1:]):

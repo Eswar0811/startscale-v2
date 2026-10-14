@@ -1,4 +1,6 @@
-# Pressure injection. Levels set via kubectl set env ds/stress-ng CPU_LOAD=<pct> MEM_BYTES=<size> (0 = off)
+# Pressure injection without rollouts. The pod polls /tmp/cpu (percent of one core, 0=off) and /tmp/mem
+# (MiB held, 0=off), written via `kubectl exec` (collector.set_pressure). CPU: one stress-ng worker at that
+# load. Memory: a file in a RAM-backed emptyDir (holds RAM with ~zero CPU, unlike stress-ng --vm).
 apiVersion: apps/v1
 kind: DaemonSet
 metadata: {name: stress-ng}
@@ -7,9 +9,26 @@ spec:
   template:
     metadata: {labels: {app: stress-ng}}
     spec:
+      terminationGracePeriodSeconds: 1
+      volumes: [{name: hold, emptyDir: {medium: Memory, sizeLimit: 3Gi}}]
       containers:
       - name: stress
         image: alexeiled/stress-ng:latest-ubuntu
-        env: [{name: CPU_LOAD, value: "0"}, {name: MEM_BYTES, value: "0"}]
-        command: ["sh","-c","while true; do if [ \"$CPU_LOAD\" != 0 ] || [ \"$MEM_BYTES\" != 0 ]; then stress-ng --cpu 2 --cpu-load $CPU_LOAD --vm 1 --vm-bytes $MEM_BYTES --timeout 60s; else sleep 5; fi; done"]
-        resources: {limits: {cpu: "2", memory: 3Gi}}
+        volumeMounts: [{name: hold, mountPath: /hold}]
+        command: ["sh","-c"]
+        args:
+        - |
+          echo 0 > /tmp/cpu; echo 0 > /tmp/mem; lc=""; lm=""; pid=""
+          while true; do
+            L=$(cat /tmp/cpu); M=$(cat /tmp/mem)
+            if [ "$L" != "$lc" ]; then
+              [ -n "$pid" ] && kill $pid 2>/dev/null && wait $pid 2>/dev/null; pid=""; lc="$L"
+              if [ "$L" != 0 ]; then stress-ng --cpu 1 --cpu-load $L --timeout 0 & pid=$!; fi
+            fi
+            if [ "$M" != "$lm" ]; then
+              rm -f /hold/f; lm="$M"
+              if [ "$M" != 0 ]; then dd if=/dev/zero of=/hold/f bs=1M count=$M 2>/dev/null; fi
+            fi
+            sleep 1
+          done
+        resources: {limits: {cpu: "1", memory: 4Gi}}

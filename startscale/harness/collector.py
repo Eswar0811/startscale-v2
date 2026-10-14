@@ -23,8 +23,8 @@ from datetime import datetime, timezone
 import pandas as pd
 
 TAG = {80: "small", 600: "medium", 2200: "large"}
-CPU_LOAD = {"low": 0, "med": 40, "high": 80}
-MEM_BYTES = {"low": "0", "high": "1G"}
+CPU_LOAD = {"low": 0, "med": 40, "high": 80}      # % of one core per node
+MEM_BYTES = {"low": "0", "high": "1024"}   # MiB held in RAM per node (4 nodes share a 10 GB VM; 2 GiB each OOM-killed the VM)
 REPO = "localhost:5000/startscale-target"
 NS, DEP = "default", "startscale-target"
 FIELDS = ["run_id", "rep", "role", "image_mb", "cache", "bw_mbps", "cpu", "mem", "probe_period_s", "concurrent",
@@ -60,15 +60,23 @@ def workers(R):
     return R.sh("kind get nodes --name startscale | grep worker", capture=True).split()
 
 
+def set_pressure(R, cpu, mem, settle=10):
+    """Write the level into every stress pod (no rollout) and let the load settle."""
+    pods = ["dry-pod"] if R.dry else R.sh("kubectl get pods -l app=stress-ng --field-selector=status.phase=Running -o name", capture=True).split()
+    for p in pods:
+        R.sh(f"kubectl exec {p} -- sh -c 'echo {cpu} > /tmp/cpu; echo {mem} > /tmp/mem'")
+    if not R.dry:
+        time.sleep(settle)
+
+
 def prepare(R, row, nodes):
     tag = TAG[int(row.image_mb)]
     R.sh(f"bash testbed/netem.sh {int(row.bw_mbps)}")
-    R.sh(f"kubectl set env ds/stress-ng CPU_LOAD={CPU_LOAD[row.cpu]} MEM_BYTES={MEM_BYTES[row.mem]}")
     R.sh(f"kubectl scale deploy/{DEP} --replicas=0 && kubectl wait --for=delete pod -l app={DEP} --timeout=120s", check=False)
     for n in nodes:
         if row.cache == "cold":
             # stopped containers pin the image; remove them first, then every tag of the family
-            R.sh(f"docker exec {n} sh -c 'crictl ps -a -q | xargs -r crictl rm -f; crictl pods -q | xargs -r crictl rmp -f'", check=False)
+            R.sh(f"docker exec {n} sh -c 'crictl ps -a --name startscale-target -q | xargs -r crictl rm -f; crictl pods --name startscale-target -q | xargs -r crictl rmp -f'", check=False)
             for t in TAG.values():
                 R.sh(f"docker exec {n} crictl rmi {REPO}:{t}", check=False)
         else:
@@ -78,6 +86,7 @@ def prepare(R, row, nodes):
         "readinessProbe": {"httpGet": {"path": "/readyz", "port": 8000}, "periodSeconds": int(row.probe_period_s),
                            "initialDelaySeconds": 0, "failureThreshold": 1}}]}}}}
     R.sh(f"kubectl patch deploy/{DEP} -p '{json.dumps(patch)}'")
+    set_pressure(R, CPU_LOAD[row.cpu], MEM_BYTES[row.mem])
 
 
 def nodes_with_image(R, nodes, tag):
@@ -92,11 +101,13 @@ def node_load(R, nodes):
     """Achieved pressure per worker (docker stats of the kind node containers): {node: (cpu%, mem%)}."""
     if R.dry:
         return {}
-    out = {}
-    for line in R.sh("docker stats --no-stream --format '{{.Name}} {{.CPUPerc}} {{.MemPerc}}'", capture=True).splitlines():
-        n, c, m = line.split()
-        if n in nodes:
-            out[n] = (float(c.strip('%')), float(m.strip('%')))
+    acc: dict = {}
+    for _ in range(3):                      # docker stats is a noisy instantaneous sample; average 3
+        for line in R.sh("docker stats --no-stream --format '{{.Name}} {{.CPUPerc}} {{.MemPerc}}'", capture=True).splitlines():
+            n, c, m = line.split()
+            if n in nodes:
+                acc.setdefault(n, []).append((float(c.strip('%')), float(m.strip('%'))))
+    out = {n: tuple(sum(v[i] for v in vs) / len(vs) for i in (0, 1)) for n, vs in acc.items()}
     return out
 
 
