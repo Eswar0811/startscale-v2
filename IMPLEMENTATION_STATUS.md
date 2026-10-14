@@ -1,3 +1,5 @@
+# (last updated 2026-10-14, after T0/T2/T4/T5 code prep)
+
 # StartScale v2 — implementation status against the Design & Implementation Guide
 
 Audit date 2026-10-14. "Real" = needs the kind cluster (docker/kind/kubectl are **not installed on this
@@ -82,3 +84,15 @@ same experiment.
 2. Refit the model on the real factorial data, replace the `extended` assumption, rerun the sweeps.
 3. Debug the placement/pre-pull heuristics; run Exp F on the real pools A/B; 30 paired runs for the calibration table.
 4. Phase 0 literature table; Phase 9 headline runs.
+
+
+## Next-guide (T-phases) tracker
+| Phase | State |
+| --- | --- |
+| T0 consolidate | **Partial.** Local git repo created and committed (the dir had no git). `requirements-research.txt` pinned to the installed versions. **Not pushed:** the guide's remote (`dhanushdr4210-arch/web-Autoscaling`) is not configured here and `gh` is logged in as a different account (Eswar0811); no remote branches deleted. Legacy `target-app/` was **not** moved into the new tree because its scripts use relative paths. |
+| T1 infrastructure | **Blocked.** No docker/kind/kubectl; needs an install decision (see below). `KubernetesAdapter` still untested. |
+| T2 harden | **Code done, dry-run only.** `startscale/harness/collector.py` (single collector, `--limit`, `--resume`, `--dry-run`), `scripts/validate_dataset.py`, `scripts/build_master_dataset.py`; tests cover validator, resume and dry-run. Real mode untested; `t_ready_actual`, `probe_quantisation_s` and achieved pressure are still unrecorded (marked TODO in the collector). |
+| T3 collection | Blocked on T1. |
+| T4 refit | `experiments/exp_b_v5.py` ready; verified only on a synthetic fixture. |
+| T5 recalibrate | Twin profile `empirical` (bootstraps v5 events by nearest image/cache/bandwidth cell) implemented and tested on the fixture. The 30-paired-run calibration table needs the cluster. |
+| T6–T9 | Not started (depend on real data). The earlier twin findings (ledger/conformal null, H5 contradicted) remain **assumption-dependent** until T5/T6. |

@@ -27,7 +27,15 @@ DATA = ROOT / "target-app" / "v3_master_150_v3_spatial_features.csv"
 
 
 class DeadTimeSampler:
-    def __init__(self, profile="measured", seed=0, image_mb=600.0, bw_mbps=100.0):
+    def __init__(self, profile="measured", seed=0, image_mb=600.0, bw_mbps=100.0, v5_path=None):
+        self.emp = None
+        if profile == "empirical":     # T5: dead time = bootstrap of real v5 events in the nearest factor cell
+            self.emp = pd.read_parquet(v5_path) if str(v5_path).endswith(".parquet") else pd.read_csv(v5_path)
+            self.emp = self.emp[self.emp.status.eq("ok")] if "status" in self.emp else self.emp
+            self.emp_cells = {k: g.startup_latency_s.values for k, g in
+                              self.emp.groupby(["image_mb", "cache", "bw_mbps"])}
+            self.emp_keys = np.array([[np.log(k[0]), float(k[1] == "warm") * 1e3, np.log(k[2])] for k in self.emp_cells])
+            self.emp_list = list(self.emp_cells)
         d = pd.read_csv(DATA)
         d["cold"] = (d.image_cache_state.str.lower() == "cold").astype(int)
         self.warm = d[d.cold == 0].request_to_ready_ms.values / 1000
@@ -46,6 +54,10 @@ class DeadTimeSampler:
 
     def startup(self, node: NodeState):
         """Seconds from creation to ready on `node` in its current state."""
+        if self.emp is not None:
+            q = np.array([np.log(node.image_mb), float(node.cache_warm) * 1e3, np.log(node.bw_mbps)])
+            k = self.emp_list[int(np.argmin(((self.emp_keys - q) ** 2).sum(1)))]
+            return float(self.rng.choice(self.emp_cells[k]))
         base = self.rng.choice(self.warm)          # container start + app init + probe quantisation
         base *= 1.0 + 0.004 * max(node.cpu_pct - 10, 0)          # node-pressure effect is weak in the measured data
         if self.profile == "extended":
@@ -63,6 +75,7 @@ class TwinConfig:
     queue_cap_s: float = 5.0
     init_replicas: int = 0            # 0 => sized for the trace's first-second demand
     profile: str = "measured"
+    v5_path: str | None = None
     image_mb: float = 600.0
     bw_mbps: float = 100.0
     t_control: float = 15.0
@@ -205,6 +218,8 @@ class SimAdapter(ClusterAdapter):
             if self.cfg.profile == "extended":
                 dur = self.sampler.pull_s(NodeState(n, False, node.cpu_pct, node.mem_pct, self._others_pulling(n),
                                                     node.image_mb, node.bw_mbps))
+            elif self.cfg.profile == "empirical":
+                dur = self.sampler.startup(NodeState(n, False, image_mb=node.image_mb, bw_mbps=node.bw_mbps))
             else:
                 dur = float(self.sampler.rng.choice(self.sampler.cold))
             self._start_pull(n, dur, prepull=True)
@@ -224,7 +239,7 @@ def run_twin(trace, controller_factory, cfg: TwinConfig = None, seed=0, sampler_
     rng = np.random.default_rng(seed)
     env = simpy.Environment()
     sampler = DeadTimeSampler(cfg.profile, seed=seed if sampler_seed is None else sampler_seed,
-                              image_mb=cfg.image_mb, bw_mbps=cfg.bw_mbps)
+                              image_mb=cfg.image_mb, bw_mbps=cfg.bw_mbps, v5_path=cfg.v5_path)
     if cfg.init_replicas <= 0:
         import dataclasses, math
         cfg = dataclasses.replace(cfg, init_replicas=max(2, math.ceil(trace[0] / (cfg.mu * 0.6))))
