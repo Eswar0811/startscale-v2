@@ -117,3 +117,15 @@ same experiment.
   pod timestamps are 1 s resolution; docker-stats CPU% is of one core.
 * **T3 running** (started 2026-10-14, unattended, `caffeinate`): `runs/sweep/20261014/` (events.csv, done.txt, collector.log).
   Resume with the same command + `--resume`. Validate daily: `python scripts/validate_dataset.py runs/sweep/20261014`.
+
+## Update: pilot attempt 2026-10-14 (stopped — host disk full)
+* T3 full run had died after 2 runs (Colima VM I/O errors; VM restarted). Pilot design built
+  (`scripts/build_pilot_design.py` → `results/pilot_plan.csv`: 50 cells × 2 reps, ~460 events, est. 2.5 h) and started.
+* Pilot got **2 runs** (11 events, validate clean) before the **Mac's disk filled** (460 GiB volume, ~98% used; Colima's disk
+  image alone was ~45 GB, plus ~104 GB Downloads / ~68 GB Library / ~38 GB Desktop of the user's own data). Writes failed
+  (ENOSPC), containerd returned I/O errors, the kind API became unreachable. Collector stopped. I freed ~10 GB
+  (brew cache, `fstrim` of the VM); **no user files were touched**.
+* **Cluster currently unhealthy; pilot not complete; Step 5 checks not run.** Pilot checks script is written
+  (`scripts/pilot_checks.py`) but untested on real data.
+* Needed before retrying: ≥ ~40 GB free on the host (4 workers each cache the 2.2 GB image + the registry copies + Colima growth),
+  then `colima restart` / recreate the kind cluster (`kind delete cluster --name startscale && bash testbed/setup.sh`) and re-push images.
