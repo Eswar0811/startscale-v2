@@ -67,7 +67,10 @@ def prepare(R, row, nodes):
     R.sh(f"kubectl scale deploy/{DEP} --replicas=0 && kubectl wait --for=delete pod -l app={DEP} --timeout=120s", check=False)
     for n in nodes:
         if row.cache == "cold":
-            R.sh(f"docker exec {n} crictl rmi {REPO}:{tag}", check=False)
+            # stopped containers pin the image; remove them first, then every tag of the family
+            R.sh(f"docker exec {n} sh -c 'crictl ps -a -q | xargs -r crictl rm -f; crictl pods -q | xargs -r crictl rmp -f'", check=False)
+            for t in TAG.values():
+                R.sh(f"docker exec {n} crictl rmi {REPO}:{t}", check=False)
         else:
             R.sh(f"docker exec {n} crictl pull {REPO}:{tag}", check=False)
     patch = {"spec": {"template": {"spec": {"containers": [{
@@ -77,11 +80,33 @@ def prepare(R, row, nodes):
     R.sh(f"kubectl patch deploy/{DEP} -p '{json.dumps(patch)}'")
 
 
-def collect_rows(R, row, t_decision, nodes_had_image):
+def nodes_with_image(R, nodes, tag):
+    """Ground truth from the CRI (not the plan): which workers actually hold the image right now."""
+    if R.dry:
+        return set()
+    return {n for n in nodes if f"{REPO}" in R.sh(f"docker exec {n} crictl images {REPO}:{tag}", check=False, capture=True)
+            and tag in R.sh(f"docker exec {n} crictl images {REPO}:{tag}", check=False, capture=True)}
+
+
+def node_load(R, nodes):
+    """Achieved pressure per worker (docker stats of the kind node containers): {node: (cpu%, mem%)}."""
+    if R.dry:
+        return {}
+    out = {}
+    for line in R.sh("docker stats --no-stream --format '{{.Name}} {{.CPUPerc}} {{.MemPerc}}'", capture=True).splitlines():
+        n, c, m = line.split()
+        if n in nodes:
+            out[n] = (float(c.strip('%')), float(m.strip('%')))
+    return out
+
+
+def collect_rows(R, row, t_decision, nodes_had_image, load):
     deadline = time.time() + 600
     pods = []
     while not R.dry and time.time() < deadline:
-        pods = R.kjson(f"get pods -l app={DEP}")["items"]
+        pods = [p for p in R.kjson(f"get pods -l app={DEP}")["items"]
+                if not p["metadata"].get("deletionTimestamp")
+                and ts(p["metadata"]["creationTimestamp"]) >= int(t_decision) - 1]   # this run's pods only
         ready = [p for p in pods if any(c["type"] == "Ready" and c["status"] == "True"
                                          for c in p.get("status", {}).get("conditions", []))]
         if len(ready) >= int(row.concurrent):
@@ -98,13 +123,20 @@ def collect_rows(R, row, t_decision, nodes_had_image):
               for e in events if e["involvedObject"]["name"] == name}
         node = p["spec"].get("nodeName", "")
         ready_obs = conds.get("Ready")
+        app_ready = None
+        if not R.dry:
+            for line in R.sh(f"kubectl logs {name}", check=False, capture=True).splitlines():
+                if line.startswith("APP_READY ts="):
+                    app_ready = float(line.split("=")[1])
         out.append(dict(
-            pod_name=name, node=node, t_decision=t_decision, t_scheduled=conds.get("PodScheduled"),
+            pod_name=name, node=node, t_decision=ts(p["metadata"]["creationTimestamp"]), t_scheduled=conds.get("PodScheduled"),
             t_pull_start=ev.get("Pulling"), t_pull_end=ev.get("Pulled"), t_started=started,
-            t_ready_actual=None,   # app-reported ready time: TODO read /readyz first-success timestamp from app logs
-            t_ready_observed=ready_obs, probe_quantisation_s=None,
-            startup_latency_s=(ready_obs - t_decision) if ready_obs else None,
-            achieved_cpu_pct=None, achieved_mem_pct=None,
+            t_ready_actual=app_ready,
+            t_ready_observed=ready_obs,
+            probe_quantisation_s=(ready_obs - app_ready) if (ready_obs and app_ready) else None,
+            # t_decision := pod creationTimestamp (same 1 s-resolution clock as the pod conditions)
+            startup_latency_s=(ready_obs - ts(p["metadata"]["creationTimestamp"])) if ready_obs else None,
+            achieved_cpu_pct=load.get(node, (None, None))[0], achieved_mem_pct=load.get(node, (None, None))[1],
             node_had_image=int(node in nodes_had_image),
             status="ok" if ready_obs else "timeout"))
     return out
@@ -135,10 +167,13 @@ def main():
             if a.limit and n_run >= a.limit:
                 break
             prepare(R, row, nodes)
-            had = set() if row.cache == "cold" else set(nodes)
+            had = nodes_with_image(R, nodes, TAG[int(row.image_mb)])
+            if row.cache == "cold" and had and not a.dry_run:
+                print(f"WARN run {row.run_id}: cold cell but image present on {sorted(had)}")
+            load = node_load(R, nodes)
             t_dec = time.time()
             R.sh(f"kubectl scale deploy/{DEP} --replicas={int(row.concurrent)}")
-            for r in collect_rows(R, row, t_dec, had):
+            for r in collect_rows(R, row, t_dec, had, load):
                 w.writerow({**{k: getattr(row, k, None) for k in ("run_id", "rep", "role", "image_mb", "cache",
                                                                  "bw_mbps", "cpu", "mem", "probe_period_s", "concurrent")}, **r})
             fh.flush()

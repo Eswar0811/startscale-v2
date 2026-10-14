@@ -49,6 +49,7 @@ def _simulate_warmup():
     if STARTUP_DELAY_MS > 0:
         time.sleep(STARTUP_DELAY_MS / 1000.0)
     _ready = True
+    print(f"APP_READY ts={time.time():.3f}", flush=True)   # app-side ready time (probe-quantisation measurement)
 
 
 @asynccontextmanager

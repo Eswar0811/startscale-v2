@@ -21,10 +21,11 @@ for x, y in zip(order, order[1:]):
     chk(f"timestamp order {x} > {y}", d[x] > d[y] + 1.0)      # 1 s clock granularity
 chk("pull_end < pull_start", d.t_pull_end < d.t_pull_start)
 chk("non-positive latency", d.startup_latency_s <= 0)
+ORD = {"low": 0, "med": 1, "high": 2}
 for col, ach in (("cpu", "achieved_cpu_pct"), ("mem", "achieved_mem_pct")):
     if d[ach].notna().any():
-        lv = d.groupby(col)[ach].median()
-        if not lv.is_monotonic_increasing and not lv.sort_values().index.tolist() == ["low", "med", "high"][:len(lv)]:
+        lv = d.groupby(col)[ach].median().sort_index(key=lambda i: i.map(ORD))
+        if not lv.is_monotonic_increasing:
             errs.append(f"achieved {col} pressure not ordered with intended level: {lv.to_dict()}")
 if a.plan:
     plan = pd.read_csv(a.plan)

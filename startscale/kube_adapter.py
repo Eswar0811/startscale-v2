@@ -40,8 +40,12 @@ class KubernetesAdapter(ClusterAdapter):
     def _pid(self, name):
         return self._pod_ids.setdefault(name, len(self._pod_ids) + 1)
 
+    def _image(self):
+        return self.apps.read_namespaced_deployment(self.dep, self.ns).spec.template.spec.containers[0].image
+
     def _node_states(self):
         out = {}
+        self.image = self._image()
         for n in self.core.list_node().items:
             if "node-role.kubernetes.io/control-plane" in (n.metadata.labels or {}):
                 continue
@@ -73,6 +77,25 @@ class KubernetesAdapter(ClusterAdapter):
                 pending.append(PendingPod(self._pid(p.metadata.name), node, t_c, cold, npull))
         return Observation(self._now(), ready, pending, list(self.hist), nodes, done)
 
+    RANK_WEIGHTS = (100, 50, 25, 10)
+
+    def ensure_affinity_template(self):
+        """One-time setup: static *preferred* affinity terms on node label startscale/rank=r1..r4.
+        The controller then steers placement by relabelling nodes, so no pod-template change (and no
+        rollout of running pods) ever happens at control time. Preferences, never `required`."""
+        terms = [{"weight": w, "preference": {"matchExpressions": [
+            {"key": "startscale/rank", "operator": "In", "values": [f"r{i + 1}"]}]}}
+            for i, w in enumerate(self.RANK_WEIGHTS)]
+        patch = {"spec": {"template": {"spec": {"affinity": {"nodeAffinity": {
+            "preferredDuringSchedulingIgnoredDuringExecution": terms}}}}}}
+        self.apps.patch_namespaced_deployment(self.dep, self.ns, patch)
+
+    def _set_rank_labels(self, node_weights):
+        order = sorted(node_weights, key=lambda n: -node_weights[n])
+        for i, n in enumerate(order):
+            rank = f"r{min(i, len(self.RANK_WEIGHTS) - 1) + 1}"
+            self.core.patch_node(n, {"metadata": {"labels": {"startscale/rank": rank}}})
+
     def _scale(self, replicas):
         if not self.dry:
             self.apps.patch_namespaced_deployment_scale(self.dep, self.ns, {"spec": {"replicas": int(replicas)}})
@@ -82,12 +105,7 @@ class KubernetesAdapter(ClusterAdapter):
 
     def add_pods(self, k, node_weights=None):
         if node_weights and not self.dry:
-            terms = [{"weight": int(w), "preference": {"matchExpressions": [
-                {"key": "kubernetes.io/hostname", "operator": "In", "values": [n]}]}}
-                for n, w in node_weights.items()]
-            patch = {"spec": {"template": {"spec": {"affinity": {"nodeAffinity": {
-                "preferredDuringSchedulingIgnoredDuringExecution": terms}}}}}}   # preferences, never `required`
-            self.apps.patch_namespaced_deployment(self.dep, self.ns, patch)
+            self._set_rank_labels(node_weights)
         before = {p.metadata.name for p in self.core.list_namespaced_pod(self.ns, label_selector=f"app={self.dep}").items}
         nodes = self._node_states()
         npull = 0
