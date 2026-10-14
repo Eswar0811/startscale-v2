@@ -129,3 +129,30 @@ same experiment.
   (`scripts/pilot_checks.py`) but untested on real data.
 * Needed before retrying: ≥ ~40 GB free on the host (4 workers each cache the 2.2 GB image + the registry copies + Colima growth),
   then `colima restart` / recreate the kind cluster (`kind delete cluster --name startscale && bash testbed/setup.sh`) and re-push images.
+
+## Pilot results (2026-10-14/15) — 100 runs, 460 events, all validated; data in `results/pilot/pilot_master.parquet`
+Rebuilt cluster after the disk-full incident (Mac now ~55 GiB free; `scripts/disk_guard.sh` stops the collector below 12 GiB).
+* **5.1 Spread — holds, much stronger than expected.** 1 s (warm, probe 1 s) to 395 s (cold, 600 MB or 2.2 GB, 50 Mbit): **~400×**
+  (p99/p01 ≈ 390×). Cold medians: 80 MB 40 s @50 Mbit; 600 MB 310 s @50, 73 s @200; 2.2 GB 376 s @50, 241 s @200, 91 s @1 Gbit.
+  Warm cells are 1.5–11 s. Figure: `results/pilot/motivation.png`. H1 is supported.
+* **Warm startup is almost entirely readiness-probe quantisation:** warm latency = 2 s / 6 s / 11 s for probe period 1 / 5 / 10 s
+  regardless of image, bandwidth or concurrency (an apparent bandwidth effect on warm cells was a probe-period confound).
+  `probe_quantisation_s` (k8s ready − app-side ready) averages 1.95 s, up to 9.7 s — pure configuration, not work.
+* **5.4 Pressure separates:** CPU median 5.8 / 41 / 81 % (low/med/high); memory 2.0 / 12.2 %. The `med` CPU level is noisy
+  (IQR 22–60 %). Mem and CPU are independent (RAM-backed emptyDir fix held).
+* **5.2 Model (direction check, ~100 cells):** in seconds, unseen-cell MAE: LightGBM q50 30.5 vs per-image median 36.4, but **worse than
+  per-(image,cache) median 27.9**; random-fold LightGBM 13.9 (interpolation). The heavy tail dominates MAE. On a **log target**, grouped-by-cell
+  log-MAE is 0.39 vs 0.59 for per-(image,cache) median (~34 % better); one-sided q90 coverage 0.86–0.91 (target 0.90); central 80 %
+  interval under-covers on unseen cells (0.52). Use log-latency for the real model.
+* **5.3 Empirical twin profile** reproduces the real spread (1–395 s) when sampled.
+* Sample sizes are small; treat 5.2 as direction only.
+
+### Decision: GO WITH CHANGES
+1. Model on **log latency** (and report pinball/coverage on the original scale); keep per-(image,cache) median as the baseline to beat.
+2. Probe period is a first-class lever (warm latency is ≈ probe period): keep it in the design, and consider adding probe-period
+   compensation to the controller/twin story.
+3. Mid-scale run (200–300 cells, 2 reps ≈ 500–700 events), not 850 cells: oversample cold cells at 200/1000 Mbit and 600 MB/2.2 GB
+   (the interesting, expensive region); warm cells are cheap and nearly deterministic given probe period, so fewer are needed.
+   Estimated 8–12 h given cold-large costs up to ~6 min/run; run it watched for the first hour, validated daily.
+4. Recalibrate the twin on this data (T5) *before* trusting the earlier ledger/conformal/placement conclusions; the
+   assumed size÷bandwidth pull model should be replaced by the `empirical` profile.

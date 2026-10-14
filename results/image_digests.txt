@@ -1,4 +1,4 @@
-REPOSITORY                         TAG       DIGEST                                                                    IMAGE ID       CREATED              SIZE
-localhost:5000/startscale-target   large     sha256:7e3de5da00e05b242d9032fd5c694ef1de5b8cf31f89404be4a774c2b3230fe8   7e3de5da00e0   10 seconds ago       4.51GB
-localhost:5000/startscale-target   medium    sha256:5a3587d918cf6905311c91f9e5f16a3351239a60a13e98f04261d233fa36c7fa   5a3587d918cf   About a minute ago   1.31GB
-localhost:5000/startscale-target   small     sha256:b2d0ce5cd3d68c841a321b86107a0b7492cc22674138345997f0a9af2b60ca42   b2d0ce5cd3d6   About a minute ago   271MB
+REPOSITORY                         TAG       DIGEST                                                                    IMAGE ID       CREATED          SIZE
+localhost:5000/startscale-target   large     sha256:a7dfbc00c16e1646e534a1fabc8c4760ec35e158d7d51c740c4852ab921caaa4   a7dfbc00c16e   4 seconds ago    4.51GB
+localhost:5000/startscale-target   medium    sha256:049293a08a5debc66bb1ded3191cc6f8078d2fbdbde4510896e95c11ac628fe3   049293a08a5d   36 seconds ago   1.31GB
+localhost:5000/startscale-target   small     sha256:7aaff0787f2786fca36214f53e81eb7414454c58acdf8cb15805db85bb41709f   7aaff0787f27   45 seconds ago   271MB
