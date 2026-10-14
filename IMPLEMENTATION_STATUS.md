@@ -1,4 +1,4 @@
-# (last updated 2026-10-14, after T0/T2/T4/T5 code prep)
+# (last updated 2026-10-14 evening: T1 done, T2 done, T3 running)
 
 # StartScale v2 — implementation status against the Design & Implementation Guide
 
@@ -96,3 +96,24 @@ same experiment.
 | T4 refit | `experiments/exp_b_v5.py` ready; verified only on a synthetic fixture. |
 | T5 recalibrate | Twin profile `empirical` (bootstraps v5 events by nearest image/cache/bandwidth cell) implemented and tested on the fixture. The 30-paired-run calibration table needs the cluster. |
 | T6–T9 | Not started (depend on real data). The earlier twin findings (ledger/conformal null, H5 contradicted) remain **assumption-dependent** until T5/T6. |
+
+
+## Update: T0–T3 progress
+* **T0:** pushed to a new private repo `Eswar0811/startscale-v2` (not the guide's repo; no remote branches deleted).
+* **T1 done.** Homebrew-installed docker/colima/kind/kubectl; Colima VM 6 CPU/10 GB; 5-node kind (v1.37, containerd 2.3). Verified:
+  registry mirror pulls; registry bandwidth shaping (needed `--cap-add NET_ADMIN` and shaping **every** registry interface — a
+  large cold pull is 23 s @1 Gbit vs 368 s @50 Mbit, 16×); `KubernetesAdapter` observe/add/remove/prepull on the live cluster.
+  Fixed two real bugs this exposed: affinity patched into the pod template rolled out all pods (now steered by node
+  `startscale/rank` labels with static preferred terms), and cache detection used the wrong image tag.
+* **Image family (compressed, as pulled):** small ≈ 59 MB, large ≈ 2.18 GB (guide: ~80 MB / ~2.2 GB); `docker images` shows
+  uncompressed 271 MB / 1.31 GB / 4.51 GB. Record these in the data card.
+* **T2 done.** `startscale/harness/collector.py` (single collector) records app-side ready time (`APP_READY` log) → `probe_quantisation_s`,
+  achieved CPU/memory per node, true image presence from the CRI. Validated on 12-run dry slices. Bugs found and fixed by the
+  validator/dry runs: cold cells weren't cold (stopped containers pinned the image), the cache cleanup killed the
+  stress pods, `kubectl set env` pressure injection never took effect (replaced by exec-driven levels; memory via RAM-backed
+  emptyDir), a 2 GiB/node memory level OOM-killed the VM (now 1 GiB). Achieved pressure: CPU ≈ 6 / 47 / 80 %, memory ≈ 3 / 13 %.
+  Self-inflicted: I deleted containerd content on worker3 early on and had to re-pull the pause image.
+* **Known confounds for the data card:** all four kind nodes share one 6-CPU VM (pressure is cluster-wide contention);
+  pod timestamps are 1 s resolution; docker-stats CPU% is of one core.
+* **T3 running** (started 2026-10-14, unattended, `caffeinate`): `runs/sweep/20261014/` (events.csv, done.txt, collector.log).
+  Resume with the same command + `--resume`. Validate daily: `python scripts/validate_dataset.py runs/sweep/20261014`.
