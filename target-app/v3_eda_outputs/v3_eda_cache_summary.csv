@@ -1,0 +1,3 @@
+source_condition,trials,mean_latency,median_latency,std_latency
+CACHE_COLD,10,7218.84,7313.88,412.72
+CACHE_WARM,10,7353.8,6919.02,1342.82

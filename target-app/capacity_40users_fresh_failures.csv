@@ -1,0 +1,3 @@
+Method,Name,Error,Occurrences,First Seen,Last Seen
+GET,/work,"ConnectionRefusedError(10061, '[WinError 10061] No connection could be made because the target machine actively refused it.')",40,2026-10-07T17:35:09Z,2026-10-07T17:35:09Z
+GET,/work,RemoteDisconnected('Remote end closed connection without response'),40,2026-10-07T17:35:05Z,2026-10-07T17:35:05Z

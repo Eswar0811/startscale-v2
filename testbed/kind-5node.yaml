@@ -1,0 +1,17 @@
+# Phase 1: 1 control plane + 4 workers, pools A/B, local registry mirror (create registry first: testbed/setup.sh)
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+containerdConfigPatches:
+- |-
+  [plugins."io.containerd.grpc.v1.cri".registry.mirrors."localhost:5000"]
+    endpoint = ["http://kind-registry:5000"]
+nodes:
+- role: control-plane
+- role: worker
+  labels: {startscale/pool: A}
+- role: worker
+  labels: {startscale/pool: A}
+- role: worker
+  labels: {startscale/pool: B}
+- role: worker
+  labels: {startscale/pool: B}

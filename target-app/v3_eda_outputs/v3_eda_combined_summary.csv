@@ -1,0 +1,3 @@
+source_condition,trials,cpu_mean,memory_mean,latency_mean,latency_median,latency_std
+COMBINED_CPU11_MEM16,10,11.6,16.2,6261.31,6163.24,350.08
+COMBINED_HIGHCPU_MEM16,10,18.3,16.7,6186.33,6297.14,341.27

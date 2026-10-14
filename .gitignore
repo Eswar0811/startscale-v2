@@ -1,0 +1,17 @@
+.venv/
+__pycache__/
+*.pyc
+data.csv
+access_log_*
+*.gz
+*.zip
+azure_extracted/
+WorldCup98-master/
+worldcup98-dataset-master/
+datacentertracesdatasets-cli-main/
+function_durations_percentiles.anon.*.csv
+invocations_per_function_md.anon.*.csv
+app_memory_percentiles.anon.*.csv
+*.parquet
+!results/**/*.parquet
+runs/

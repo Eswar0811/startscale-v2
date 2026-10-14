@@ -1,0 +1,4 @@
+,pre_scale_node_cpu_pct,pre_scale_node_memory_pct,request_to_ready_ms
+pre_scale_node_cpu_pct,1.0,0.15888219133711146,-0.31639509341849714
+pre_scale_node_memory_pct,0.15888219133711146,1.0,0.28675885339537843
+request_to_ready_ms,-0.31639509341849714,0.28675885339537843,1.0

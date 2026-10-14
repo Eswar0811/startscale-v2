@@ -1,0 +1,9 @@
+﻿{
+  "spec": {
+    "template": {
+      "spec": {
+        "nodeName": "autoscaling-worker"
+      }
+    }
+  }
+}

@@ -1,0 +1,15 @@
+# Pressure injection. Levels set via kubectl set env ds/stress-ng CPU_LOAD=<pct> MEM_BYTES=<size> (0 = off)
+apiVersion: apps/v1
+kind: DaemonSet
+metadata: {name: stress-ng}
+spec:
+  selector: {matchLabels: {app: stress-ng}}
+  template:
+    metadata: {labels: {app: stress-ng}}
+    spec:
+      containers:
+      - name: stress
+        image: alexeiled/stress-ng:latest-ubuntu
+        env: [{name: CPU_LOAD, value: "0"}, {name: MEM_BYTES, value: "0"}]
+        command: ["sh","-c","while true; do if [ \"$CPU_LOAD\" != 0 ] || [ \"$MEM_BYTES\" != 0 ]; then stress-ng --cpu 2 --cpu-load $CPU_LOAD --vm 1 --vm-bytes $MEM_BYTES --timeout 60s; else sleep 5; fi; done"]
+        resources: {limits: {cpu: "2", memory: 3Gi}}

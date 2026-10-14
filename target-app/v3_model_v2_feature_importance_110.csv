@@ -1,0 +1,14 @@
+feature,importance
+worker_cpu_std,0.252581050827872
+cluster_cpu_x_memory,0.17614135243395843
+cache_warm,0.11128273106366142
+node_cpu_pct,0.08771805597449414
+worker_memory_mean,0.07036181926017171
+worker_memory_std,0.06020832637971869
+node_cpu_x_memory,0.05109432106340465
+node_memory_delta_mean,0.049705106729846904
+worker_memory_max,0.04859598573021616
+node_cpu_delta_mean,0.037915166021674426
+worker_cpu_mean,0.023596218928220537
+worker_cpu_max,0.017886937312242886
+node_memory_pct,0.012912928274518

@@ -1,0 +1,14 @@
+Count,Message,Traceback,Nodes
+709793,'LocalRunner' object has no attribute 'start_time',"  File ""C:\Users\ssaba\AppData\Local\Programs\Python\Python314\Lib\site-packages\locust\user\task.py"", line 363, in run
+    self.execute_next_task()
+    ~~~~~~~~~~~~~~~~~~~~~~^^
+  File ""C:\Users\ssaba\AppData\Local\Programs\Python\Python314\Lib\site-packages\locust\user\task.py"", line 396, in execute_next_task
+    self.execute_task(self._task_queue.popleft())
+    ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File ""C:\Users\ssaba\AppData\Local\Programs\Python\Python314\Lib\site-packages\locust\user\task.py"", line 513, in execute_task
+    task(self.user)
+    ~~~~^^^^^^^^^^^
+  File ""C:\Users\ssaba\Downloads\Web_Autoscaling\target-app\locustfile_azure_replay.py"", line 73, in replay_workload
+    elapsed = time.monotonic() - self.environment.runner.start_time
+                                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+",local
